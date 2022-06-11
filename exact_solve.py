@@ -41,6 +41,7 @@ def update_ineq(P, T, W, b, B, d, l):
     # TODO: test CORRECTNESS
     # IT MAYBE more efficient to determine feasibility here
     # print("T: ", T)
+    #print(T.shape, W.shape, B.shape)
     A_1 = -1 * np.matmul(T, np.matmul(W, B))
     W_d = W.dot(d).reshape(b.shape) # !!! avoid broadcast in later addition
     #print(S.shape, W.shape, d.shape, b.shape)
@@ -59,10 +60,13 @@ def layer(network_param, X, Theta, l):
     W, b = network_param
     root = Node()
     gen_V(W.shape[0], root)
+    i, j = 0, 0
     for X_i, Theta_i in zip(X, Theta):
+        #print("poly_{}".format(i))
         P = X_i
         B, d = Theta_i
         for v in gen_path(root):
+            #print("orthant_{}".format(j))
             S_v = np.diag([int(vj=="1") for vj in v])
             T_v = S_v - np.diag([int(vj=="0") for vj in v])
             # TODO: save some matmul here
@@ -74,6 +78,8 @@ def layer(network_param, X, Theta, l):
             d_ = S_v.dot(W_d + b)
             X_new.append(P_)
             Theta_new.append((B_, d_))
+            j += 1
+        i += 1
         #print(X_new)
     return X_new, Theta_new
 
@@ -82,6 +88,7 @@ def forward(network_params, X, Theta, save_inter=False):
     # TODO: add timer
     all_X_Theta = []
     for i in range(len(network_params)):
+        print("Forward computation at layer {}".format(i+1))
         X, Theta = layer(network_params[i], X, Theta, i)
         if save_inter:
             all_X_Theta.append((X, Theta))
@@ -93,9 +100,10 @@ def solve_primal_lp(c, A_0, b_0, P, theta):
     # Input: P with multiple ineq A_i x <= b_i,
     # test solver: scipy linprog
     A, b = A_0, b_0  # INIT CONSTRAINT
-    # print("init: ", A_0, b_0)
+    #print("init: ", A_0.shape, b_0.shape)
     for l in range(len(P)):
         A_l, b_l = P[l]
+        #print(A_l.shape, b_l.shape)
         A = np.concatenate((A, A_l), axis=0)
         b = np.concatenate((b, b_l), axis=0)
 

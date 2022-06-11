@@ -1,18 +1,22 @@
 # pytorch implemetation
 import numpy as np
+import argparse
 import torch
 import torchvision.datasets as dts
 import torchvision.transforms as trnsfrms
 import torch.nn as nn
 
 
-class classicationmodel(nn.Module):
-    def __init__(self, network_params=(24, 24, 10), d_in=28*28):
-        super(classicationmodel,self).__init__()
+class classificationmodel(nn.Module):
+    def __init__(self, network_params=(6, 6, 10), d_in=28*28):
+        super(classificationmodel,self).__init__()
         self.linears = []
         self.d_in = d_in
         for i, d_out in enumerate(network_params):
-            lin_layer = nn.Linear(d_in, d_out)
+            if i == (len(network_params) - 1):
+                lin_layer = nn.Linear(d_in, d_out, bias=False)
+            else:
+                lin_layer = nn.Linear(d_in, d_out)
             self.linears.append(lin_layer)
             self.add_module("linear_{}".format(i), lin_layer)
             d_in = d_out
@@ -31,7 +35,7 @@ def train(cmodel, train_dataloader, d_in=28*28, criter='CE', l_r=0.001, numepchs
         loss = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(cmodel.parameters(), lr=l_r)
     nttlstps = len(train_dataloader)
-    #lr_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=5, gamma=2)
+    #lr_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=5, gamma=0.5)
 
     torch.device('cpu')
     for epoch in range(numepchs):
@@ -65,7 +69,13 @@ def test(cmodel, test_dataloader):
 
 
 if __name__  == "__main__":
-    cmodel = classicationmodel()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--save_model', action='store_true',
+                        help='whether to save model to path')
+    parser.add_argument('--model_path')
+    args = parser.parse_args()
+
+    cmodel = classificationmodel()
 
     print(cmodel)
     print(cmodel.parameters())
@@ -78,7 +88,14 @@ if __name__  == "__main__":
     mnist_testset = dts.MNIST(root='./data', train=False, download=True, transform=trnsform)
     testldr = torch.utils.data.DataLoader(mnist_testset, batch_size=10, shuffle=True)
 
-    train(cmodel, trainldr, d_in=28*28, criter='CE', l_r=0.001, numepchs=5)
+    train(cmodel, trainldr, d_in=28*28, criter='CE', l_r=0.0005, numepchs=10)
 
     test(cmodel, testldr)
+
+    if args.save_model:
+        print("Saving trained model to {}".format(args.model_path))
+        torch.save(cmodel.state_dict(), args.model_path)
+
+
+
 

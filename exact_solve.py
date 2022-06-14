@@ -3,8 +3,6 @@ np.random.seed(0)
 import copy
 from scipy.optimize import linprog
 
-## TODO: figure out what packages need to be installed to run functions in main
-
 #### iterator over orthants in R^d
 class Node:
     def __init__(self, bit=""):
@@ -54,21 +52,30 @@ def update_ineq(P, T, W, b, B, d, l):
     return P
 
 
-def layer(network_param, X, Theta, l):
+def layer(network_param, X, Theta, l, x_0=None, A_0=None, b_0=None, L=None, U=None):
     X_new = []
     Theta_new = []
     W, b = network_param
     root = Node()
     gen_V(W.shape[0], root)
     i, j = 0, 0
+    n_skipped = 0
     for X_i, Theta_i in zip(X, Theta):
         #print("poly_{}".format(i))
         P = X_i
         B, d = Theta_i
+        # check if current polytope is feasible
+        if l == 0:
+            x_0 = x_0
+        else:
+            x_0 = None
+        if is_infeasible(A_0, b_0, L, U, P, x_0=x_0):
+            n_skipped += 1
+            continue
         for v in gen_path(root):
             #print("orthant_{}".format(j))
-            S_v = np.diag([int(vj=="1") for vj in v])
-            T_v = S_v - np.diag([int(vj=="0") for vj in v])
+            S_v = np.diag([float(int(vj=="1")) for vj in v])
+            T_v = S_v - np.diag([float(int(vj=="0")) for vj in v])
             # TODO: save some matmul here
             P_ = update_ineq(copy.deepcopy(P), T_v, W, b, B, d, l) # update P by appending new inequalities
             #print("polytope: ", P_)
@@ -81,31 +88,88 @@ def layer(network_param, X, Theta, l):
             j += 1
         i += 1
         #print(X_new)
-    return X_new, Theta_new
+    return X_new, Theta_new, n_skipped
 
 
-def forward(network_params, X, Theta, save_inter=False):
+def forward(network_params, X, Theta, save_inter=False, x_0=None, A_0=None, b_0=None, L=None, U=None):
     # TODO: add timer
     all_X_Theta = []
+
     for i in range(len(network_params)):
         print("Forward computation at layer {}".format(i+1))
-        X, Theta = layer(network_params[i], X, Theta, i)
+        X, Theta, n_skipped = layer(network_params[i], X, Theta, i, x_0, A_0, b_0, L, U)
+        print("Done..skipped {} polytopes".format(n_skipped))
         if save_inter:
             all_X_Theta.append((X, Theta))
     return X, Theta, all_X_Theta if len(all_X_Theta) else None
 
 
 #### LP solve
-def solve_primal_lp(c, A_0, b_0, P, theta):
+def is_infeasible(A_0, b_0, L, U, P, x_0=None):
+    #A, b = A_0, b_0
+    A, b = None, None
+    for l in range(len(P)):
+        A_l, b_l = P[l]
+        if A is None:
+            A, b = A_l, b_l
+        else:
+            # print(A_l.shape, b_l.shape)
+            A = np.concatenate((A, A_l), axis=0)
+            b = np.concatenate((b, b_l), axis=0)
+
+    c_const = np.zeros(A_0.shape[1])
+    res = linprog(c_const, A_ub=A, b_ub=b,
+                  A_eq=None, b_eq=None, bounds=list(zip(L, U)),
+                  method='interior-point')
+
+    return res.status == 2
+
+
+
+# def solve_primal_lp(c, A_0, b_0, P, theta):
+#     # Input: P with multiple ineq A_i x <= b_i,
+#     # test solver: scipy linprog
+#     A, b = A_0, b_0  # INIT CONSTRAINT
+#     #print("init: ", A_0.shape, b_0.shape)
+#     for l in range(len(P)):
+#         A_l, b_l = P[l]
+#         #print(A_l.shape, b_l.shape)
+#         A = np.concatenate((A, A_l), axis=0)
+#         b = np.concatenate((b, b_l), axis=0)
+#
+#     # print(A)
+#     # print(b)
+#
+#     # transform objective
+#     B, d = theta
+#     const = c.dot(d)
+#     c_mod = c.dot(B)
+#
+#     # solve (note: this is solving a minimization problem)
+#     res = linprog(c_mod, A_ub=A, b_ub=b,
+#                   A_eq=None, b_eq=None, bounds=None,
+#                   method='interior-point',
+#                   callback=None, options=None, x0=None)
+#
+#     return res, c_mod, const
+
+def solve_primal_lp(c, A_0, b_0, L, U, P, theta):
     # Input: P with multiple ineq A_i x <= b_i,
     # test solver: scipy linprog
-    A, b = A_0, b_0  # INIT CONSTRAINT
+    #A, b = A_0, b_0  # INIT CONSTRAINT
+    A, b = None, None
     #print("init: ", A_0.shape, b_0.shape)
     for l in range(len(P)):
         A_l, b_l = P[l]
-        #print(A_l.shape, b_l.shape)
-        A = np.concatenate((A, A_l), axis=0)
-        b = np.concatenate((b, b_l), axis=0)
+        if A is None:
+            A, b = A_l, b_l
+        else:
+            #print(A_l.shape, b_l.shape)
+            A = np.concatenate((A, A_l), axis=0)
+            b = np.concatenate((b, b_l), axis=0)
+
+    # print(A)
+    # print(b)
 
     # transform objective
     B, d = theta
@@ -114,7 +178,7 @@ def solve_primal_lp(c, A_0, b_0, P, theta):
 
     # solve (note: this is solving a minimization problem)
     res = linprog(c_mod, A_ub=A, b_ub=b,
-                  A_eq=None, b_eq=None, bounds=None,
+                  A_eq=None, b_eq=None, bounds=list(zip(L, U)),
                   method='interior-point',
                   callback=None, options=None, x0=None)
 

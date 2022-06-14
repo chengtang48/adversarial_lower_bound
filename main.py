@@ -12,8 +12,10 @@ def create_init(x_0, eps, find_extremes_init=False):
     d = len(x_0)
     b_0_u = eps * np.ones(d, ) + x_0
     A_0_u = np.eye(d)
-    A_0_l = -1 * A_0_u
+    A_0_l = np.diag(-1*np.ones(d)) #-1 * A_0_u
     b_0_l = eps * np.ones(d, ) - x_0
+    #assert np.all(x_0 <= b_0_u)
+    #assert np.all(-x_0 <= b_0_l)
     ###
     A_0 = np.concatenate((A_0_u, A_0_l), axis=0)
     #b_0 = np.concatenate((b_0_u, b_0_l), axis=0).reshape(-1, 1)
@@ -44,6 +46,12 @@ def create_init(x_0, eps, find_extremes_init=False):
     return A_0, b_0, extremes_init
 
 
+def create_init_bounds(x_0, eps):
+    u = [x_0[i]+eps for i in range(len(x_0))]
+    l = [x_0[i]-eps for i in range(len(x_0))]
+    return l, u
+
+
 def test_parse_res(c_obj, const, opt_res, final_res):
     # parse result from lp solver
     assert opt_res.status != 3
@@ -61,19 +69,21 @@ def test_parse_res(c_obj, const, opt_res, final_res):
 ######################################
 
 def find_adv_attack(hidden_network_params, x_0, c_obj, eps):
-    X_0 = [list()]
-    Theta_0 = [(np.eye(len(x_0)), np.zeros(len(x_0)))]
-    X, Theta, _ = forward(hidden_network_params, X_0, Theta_0, save_inter=False)
-    print("Done with forward computation")
     ####
     A_0, b_0, _ = create_init(x_0, eps, find_extremes_init=False)
+    L, U = create_init_bounds(x_0, eps)
+    ####
+    X_0 = [list()]
+    Theta_0 = [(np.eye(len(x_0)), np.zeros(len(x_0)))]
+    X, Theta, _ = forward(hidden_network_params, X_0, Theta_0, save_inter=False, x_0=x_0, A_0=A_0, b_0=b_0, L=L, U=U)
+    print("Done with forward computation")
     extremes_init = []
     # print("vertices in initial polytope: ", extremes_init)
     ####
     final_res = {"best_val_found": None, "successes": [], "num_infeasible": 0}
     print(len(X), len(Theta))
     for (X_i, Theta_i) in zip(X, Theta):
-        res, c_mod, const = solve_primal_lp(c_obj, A_0, b_0, X_i, Theta_i)
+        res, c_mod, const = solve_primal_lp(c_obj, A_0, b_0, L, U, X_i, Theta_i)
         test_parse_res(c_mod, const, res, final_res)
     return final_res, hidden_network_params
 
@@ -92,13 +102,15 @@ def find_c_obj(W, outp, select='random'):
         if len(outp[:max_idx]) > 0:
             j_1 = np.argmax(outp[:max_idx])
         if len(outp[max_idx + 1:]) > 0:
-            j_2 = np.argmax(outp[max_idx+1:])
+            j_2 = max_idx + np.argmax(outp[max_idx+1:]) + 1
         if j_2 is None or (j_1 is not None and outp[j_1] > outp[j_2]):
             j = j_1
         else:
             j = j_2
     #print("initial difference: ", outp[max_idx] - outp[j])
-    return W[max_idx, :] - W[j, :]
+    print("max index: {}, selected index: {}".format(max_idx, j))
+    #return W[max_idx, :] - W[j, :]
+    return W[max_idx, :]
 
 
 ######
@@ -125,8 +137,8 @@ def run_adv_example(test_dataloader, model, hidden_network_params, select='exhau
             if pred_id == label:
                 total_runs += 1
                 outp = preds[idx].squeeze()
+                print("original out pred {}".format(outp))
                 if select == 'exhaustive':
-                    # print(outp)
                     max_idx = np.argmax(outp)
                     for j in range(len(W_L)):
                         if j != max_idx:
@@ -138,6 +150,7 @@ def run_adv_example(test_dataloader, model, hidden_network_params, select='exhau
                             pt = final_res['best_val_found'][0]
                             adv_pred = model(torch.from_numpy(pt).float()).detach()
                             print("original: {} perturbed: {} label: {}".format(pred_id, adv_pred, label))
+                            print("distance to x_0: {}".format(max(abs((pt - x_0)))))
                             if np.argmax(adv_pred, axis=1) != pred_id:
                                 total_success += 1
                                 break
@@ -150,6 +163,7 @@ def run_adv_example(test_dataloader, model, hidden_network_params, select='exhau
                     pt = final_res['best_val_found'][0]
                     adv_pred = model(torch.from_numpy(pt).float()).detach()
                     print("original: {} perturbed: {} label: {}".format(pred_id, adv_pred, label))
+                    print("distance to x_0: {}".format(max(abs((pt-x_0)))))
                     if np.argmax(adv_pred, axis=1) != pred_id:
                         total_success += 1
             if total_runs >= num_runs:
@@ -190,7 +204,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path')
     args = parser.parse_args()
 
-    model = classificationmodel()  # add any non-default init params
+    model = classificationmodel(network_params=(6, 6, 10))  # add any non-default init params
     model.load_state_dict(torch.load(args.model_path))
     model.eval()
 
@@ -200,10 +214,12 @@ if __name__ == '__main__':
 
     # x_0 = torch.randn((28*28,))
     trnsform = trnsfrms.Compose([trnsfrms.ToTensor(), trnsfrms.Normalize((0.7,), (0.7,))])
-    mnist_testset = dts.MNIST(root='./data', train=False, download=False, transform=trnsform)
-    testldr = torch.utils.data.DataLoader(mnist_testset, batch_size=10, shuffle=False)
+    #mnist_testset = dts.MNIST(root='./data', train=False, download=False, transform=trnsform)
+    mnist_trainset = dts.MNIST(root='./data', train=False, download=False, transform=trnsform)
+    trainldr = torch.utils.data.DataLoader(mnist_trainset, batch_size=10, shuffle=True)
+    #testldr = torch.utils.data.DataLoader(mnist_testset, batch_size=10, shuffle=False)
 
     #print(len(hidden_network_params), W_L.shape)
     #for W, b in hidden_network_params:
     #    print(W.shape)
-    run_adv_example(testldr, model, hidden_network_params, select="exhaustive", num_runs=50, eps=1)
+    run_adv_example(trainldr, model, hidden_network_params, select="random", num_runs=1, eps=0.1)

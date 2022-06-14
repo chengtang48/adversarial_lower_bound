@@ -8,7 +8,7 @@ import torch.nn as nn
 
 
 class classificationmodel(nn.Module):
-    def __init__(self, network_params=(6, 6, 10), d_in=28*28):
+    def __init__(self, network_params=(10, 10, 10), d_in=28*28):
         super(classificationmodel,self).__init__()
         self.linears = []
         self.d_in = d_in

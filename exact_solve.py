@@ -116,12 +116,10 @@ def is_infeasible(A_0, b_0, L, U, P, x_0=None):
             # print(A_l.shape, b_l.shape)
             A = np.concatenate((A, A_l), axis=0)
             b = np.concatenate((b, b_l), axis=0)
-
     c_const = np.zeros(A_0.shape[1])
     res = linprog(c_const, A_ub=A, b_ub=b,
                   A_eq=None, b_eq=None, bounds=list(zip(L, U)),
                   method='interior-point')
-
     return res.status == 2
 
 

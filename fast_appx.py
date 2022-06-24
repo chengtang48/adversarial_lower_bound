@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+
 def get_extreme(w, L, U, direction="max"):
     res = 0
     if direction == 'max':
@@ -86,6 +87,29 @@ def fast_conv2D_layer_matrix_form(network_param, conv_param, L, U):
     #U_new = F.relu(F.conv2d(U, W_k, bias=b_k+o2, stride=stride, padding=padding, *params))
     U_new = F.relu(o2 + o0)
     return L_new, U_new
+
+
+def fast_pool2D_layer_matrix_form(kernel_size, conv_param, L, U, op='max'):
+    """
+    # TODO: need to test correctness for max-pool
+    avg or max pool of input range <=> avg or max pool of L/U
+    :param kernel_size: pooling size
+    :param conv_param: stride, padding, and other params
+    :param L:
+    :param U:
+    :param op: "max" for max-pooling; "avg" for average pooling
+    :return: L_new, U_new
+    """
+    assert op in ['max', 'avg']
+    stride, padding, *params = conv_param
+    if op == 'max':
+        L_new = F.max_pool2d(L, kernel_size, stride=stride, padding=padding, *params)
+        U_new = F.max_pool2d(U, kernel_size, stride=stride, padding=padding, *params)
+    elif op == 'avg':
+        L_new = F.avg_pool2d(L, kernel_size, stride=stride, padding=padding, *params)
+        U_new = F.avg_pool2d(U, kernel_size, stride=stride, padding=padding, *params)
+    return L_new, U_new
+
 
 
 ##### callable by find_adv_attack
@@ -177,6 +201,8 @@ if __name__ == '__main__':
 
     print("Test 3: |DL|/|L|: {}; |DU|/|U|: {}".format(np.linalg.norm(L_m-L_c.detach().numpy())/np.linalg.norm(L_m),
     np.linalg.norm(U_m-U_c.detach().numpy())/np.linalg.norm(U_m)))
+
+    ### test for average-pooling layer
 
 
 

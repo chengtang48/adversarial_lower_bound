@@ -43,7 +43,6 @@ def train(fcmodel, train_dataloader, criter='CE', l_r=0.001, numepchs=5):
     optim = torch.optim.Adam(fcmodel.parameters(), lr=l_r)
     nttlstps = len(train_dataloader)
     #lr_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=5, gamma=0.5)
-
     torch.device('cpu')
     for epoch in range(numepchs):
         for i, (imgs, lbls) in enumerate(train_dataloader):
@@ -77,6 +76,7 @@ def test(fcmodel, test_dataloader):
 
 if __name__  == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--train_batch_size', default=10)
     parser.add_argument('--model_config')
     parser.add_argument('--save_model', action='store_true',
                         help='whether to save model to path')
@@ -99,12 +99,12 @@ if __name__  == "__main__":
     trnsform = trnsfrms.Compose([trnsfrms.ToTensor(), trnsfrms.Normalize((0.7,), (0.7,))])
 
     mnist_trainset = dts.MNIST(root='./data', train=True, download=True, transform=trnsform)
-    trainldr = torch.utils.data.DataLoader(mnist_trainset, batch_size=10, shuffle=True)
+    trainldr = torch.utils.data.DataLoader(mnist_trainset, batch_size=int(args.train_batch_size), shuffle=True)
 
     mnist_testset = dts.MNIST(root='./data', train=False, download=True, transform=trnsform)
     testldr = torch.utils.data.DataLoader(mnist_testset, batch_size=10, shuffle=True)
 
-    train(fcmodel, trainldr, criter='CE', l_r=0.0001, numepchs=5)
+    train(fcmodel, trainldr, criter='CE', l_r=0.0001, numepchs=10)
 
     test(fcmodel, testldr)
 

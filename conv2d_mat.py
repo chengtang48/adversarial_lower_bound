@@ -153,61 +153,69 @@ def test_conv2d_circulant_like(kernel, inp, bias=None, stride=1, padding=0):
     return output
 
 
-
 if __name__ == "__main__":
-    ## test 1
-    ker = np.random.randn(6, 3, 3, 3)
-    inp = np.random.randn(3, 100, 100)
-    output = test_conv2d_circulant_like(ker, inp, padding=0, stride=1)
-    toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=1, padding=0, dilation=1, groups=1)
-    print("test 1 error: ", np.sum((output-toutput.detach().numpy())**2))
+    # ## test 1
+    # ker = np.random.randn(6, 3, 3, 3)
+    # inp = np.random.randn(3, 100, 100)
+    # output = test_conv2d_circulant_like(ker, inp, padding=0, stride=1)
+    # toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=1, padding=0, dilation=1, groups=1)
+    # print("test 1 error: ", np.sum((output-toutput.detach().numpy())**2))
+    #
+    # ## test 2 with padding==1
+    # ker = np.random.randn(6, 3, 3, 3)
+    # inp = np.random.randn(3, 100, 100)
+    # stride, padding = 1, 1
+    # output = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
+    # toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride, padding=padding,
+    #                                      dilation=1, groups=1)
+    # print("test 2 error: ", np.sum((output - toutput.detach().numpy()) ** 2))
+    #
+    #
+    # ## test 3 stride==2, padding==0
+    # ker = np.random.randn(1, 1, 3, 3)
+    # inp = np.random.randn(1, 99, 99)
+    # stride = 2
+    #
+    # W_conv = conv2d_circulant_like_1_ch(ker[0, 0, :, :], inp.shape[1:], stride=stride)
+    #
+    # i_h, i_w = inp.shape[1:]
+    # k_h, k_w = ker.shape[2:]
+    # o_h, o_w = (i_h - k_h) // stride + 1, (i_w - k_w) // stride + 1
+    #
+    # m_out = W_conv.dot(inp[0].flatten()).reshape((o_h, o_w))
+    # t_out =  torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride)
+    # t_out = np.squeeze(t_out)
+    #
+    # print("test error 3: {}".format(np.sum((m_out - t_out.detach().numpy())**2)))
+    #
+    #
+    # ## test 4 with stride==2, padding==1
+    # ker = np.random.randn(6, 3, 3, 3)
+    # inp = np.random.randn(3, 99, 99)
+    # stride, padding = 2, 1
+    # moutput = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
+    # toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride,
+    #                                      padding=padding,
+    #                                      dilation=1, groups=1)
+    # print("test 4 error: ", np.sum((moutput - toutput.detach().numpy()) ** 2))
+    #
+    # ## test 5 with stride==2, padding==2
+    # ker = np.random.randn(6, 3, 3, 3)
+    # inp = np.random.randn(3, 99, 99)
+    # stride, padding = 2, 2
+    # output = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
+    # toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride,
+    #                                      padding=padding,
+    #                                      dilation=1, groups=1)
+    # print("test 5 error: ", np.sum((output - toutput.detach().numpy()) ** 2))
 
-    ## test 2 with padding==1
-    ker = np.random.randn(6, 3, 3, 3)
-    inp = np.random.randn(3, 100, 100)
-    stride, padding = 1, 1
-    output = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
-    toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride, padding=padding,
-                                         dilation=1, groups=1)
-    print("test 2 error: ", np.sum((output - toutput.detach().numpy()) ** 2))
+    ## test 6: transposed convolution (single-channel)
+    ker = np.random.randn(3, 3)
+    inp = np.random.randn(10, 10)
+    stride, padding = 1, 0
+    T_k = conv2d_toeplitz_1_ch(ker, (10, 10))
+    out = np.matmul(T_k, inp.reshape(-1))
+    output = np.matmul(T_k.transpose(), out)
+    toutput = torch.nn.functional.conv_transpose2d(torch.tensor(out.reshape(1, 1, 8, 8)), torch.tensor(ker.reshape(1, 1, 3, 3)))
+    print(np.sum((output - toutput.detach().numpy().reshape(-1)) ** 2))
 
-
-    ## test 3 stride==2, padding==0
-    ker = np.random.randn(1, 1, 3, 3)
-    inp = np.random.randn(1, 99, 99)
-    stride = 2
-
-    W_conv = conv2d_circulant_like_1_ch(ker[0, 0, :, :], inp.shape[1:], stride=stride)
-
-    i_h, i_w = inp.shape[1:]
-    k_h, k_w = ker.shape[2:]
-    o_h, o_w = (i_h - k_h) // stride + 1, (i_w - k_w) // stride + 1
-
-    m_out = W_conv.dot(inp[0].flatten()).reshape((o_h, o_w))
-    t_out =  torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride)
-    t_out = np.squeeze(t_out)
-
-    print("test error 3: {}".format(np.sum((m_out - t_out.detach().numpy())**2)))
-
-
-    ## test 4 with stride==2, padding==1
-    ker = np.random.randn(6, 3, 3, 3)
-    inp = np.random.randn(3, 99, 99)
-    stride, padding = 2, 1
-    moutput = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
-    toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride,
-                                         padding=padding,
-                                         dilation=1, groups=1)
-    print("test 4 error: ", np.sum((moutput - toutput.detach().numpy()) ** 2))
-
-    ## test 5 with stride==2, padding==2
-    ker = np.random.randn(6, 3, 3, 3)
-    inp = np.random.randn(3, 99, 99)
-    stride, padding = 2, 2
-    output = test_conv2d_circulant_like(ker, inp, bias=None, stride=stride, padding=padding)
-    toutput = torch.nn.functional.conv2d(torch.tensor(inp), torch.tensor(ker), bias=None, stride=stride,
-                                         padding=padding,
-                                         dilation=1, groups=1)
-    print("test 5 error: ", np.sum((output - toutput.detach().numpy()) ** 2))
-
-    ## test 6 with batch size == 10

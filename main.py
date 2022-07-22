@@ -3,7 +3,7 @@ import argparse
 
 from exact_solve import *
 from fast_appx import *
-from ReLU_networks import FCModel
+from relu_networks import FCModel
 
 import torchvision.datasets as dts
 import torchvision.transforms as trnsfrms
@@ -48,10 +48,15 @@ def create_init(x_0, eps, find_extremes_init=False):
     return A_0, b_0, extremes_init
 
 
-def create_init_bounds(x_0, eps):
-    u = [x_0[i]+eps for i in range(len(x_0))]
-    l = [x_0[i]-eps for i in range(len(x_0))]
-    return l, u
+# def create_init_bounds(x_0, eps):
+#     u = [x_0[i]+eps for i in range(len(x_0))]
+#     l = [x_0[i]-eps for i in range(len(x_0))]
+#     return l, u
+
+def create_init_bounds(X, eps):
+    U = [X[i]+eps for i in range(len(X))]
+    L = [X[i]-eps for i in range(len(X))]
+    return L, U
 
 
 def test_parse_res(c_obj, const, opt_res, final_res):
@@ -103,6 +108,10 @@ def find_appx_adv_attack(hidden_network_params, x_0, eps, W_last, max_idx):
             x_sol = x_star
             break
     return x_sol
+
+
+def find_ibp_linear_appx_adv_attack(hidden_network_params, x_0, eps, W_last, max_idx):
+    L_0, U_0 = create_init_bounds(x_0, eps)
 
 
 def find_c_obj(W, outp, select='random'):
@@ -246,7 +255,6 @@ def run_appx_adv_example(test_dataloader, model, hidden_network_params, W_last, 
     return failed_ex
 
 
-
 #### interface with networks
 # def get_network_params(model):
 #     all_network_params = dict()
@@ -282,11 +290,27 @@ def get_network_params(model):
                 param_data[1] = param.data.detach().numpy()
                 network_params.append(tuple(param_data))
     return network_params, W_L
+
+
+def get_detailed_network_params(model):
+    # get net params for ibp-linear
+    network_params, W_L = [], None
+    model_params = list(model.parameters())
+    for idx, param in enumerate(model_params):
+        if idx == len(model_params) - 1:
+            W_L = param.data
+        else:
+            if idx % 2 == 0:
+                param_data = [None, None]
+                param_data[0] = param.data
+            else:
+                param_data[1] = param.data
+                network_params.append(tuple([param_data, "linear", "relu", None]))
+    return network_params, W_L
 ####
 
 
 if __name__ == '__main__':
-    # TODO: adversarial training: apply fast appx to adversarial training (compare with naive Lipschitz bound)
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_config')
     parser.add_argument('--model_path')
@@ -309,25 +333,66 @@ if __name__ == '__main__':
         print(param_tensor, "\t", fcmodel.state_dict()[param_tensor].size())
 
 
-    hidden_network_params, W_L = get_network_params(fcmodel)
+    # hidden_network_params, W_L = get_network_params(fcmodel)
     # for (W, b) in hidden_network_params:
     #     print(W.shape, b.shape)
     # print(W_L.shape)
-    #
+    hidden_network_params, W_L = get_detailed_network_params(fcmodel)
+    for (net_param, lin_op_type, act_type, _) in hidden_network_params:
+        W, b = net_param
+        print(W.shape, b.shape)
+    print(W_L.shape)
 
+
+    #
     trnsform = trnsfrms.Compose([trnsfrms.ToTensor(), trnsfrms.Normalize((0.7,), (0.7,))])
     mnist_testset = dts.MNIST(root='./data', train=False, download=False, transform=trnsform)
     #mnist_trainset = dts.MNIST(root='./data', train=False, download=False, transform=trnsform)
     #trainldr = torch.utils.data.DataLoader(mnist_trainset, batch_size=10, shuffle=True)
     testldr = torch.utils.data.DataLoader(mnist_testset, batch_size=10, shuffle=False)
 
-    #print(len(hidden_network_params), W_L.shape)
-    #for W, b in hidden_network_params:
-    #    print(W.shape)
-    #run_adv_example(testldr, fcmodel, hidden_network_params, select="exhaustive", num_runs=100, eps=0.01)
-    eps = 0.05
-    failed_ex = run_appx_adv_example(testldr, fcmodel, hidden_network_params, W_L, num_runs=10, eps=eps)
+    ### test 1: original ibp
+    # #print(len(hidden_network_params), W_L.shape)
+    # #for W, b in hidden_network_params:
+    # #    print(W.shape)
+    # #run_adv_example(testldr, fcmodel, hidden_network_params, select="exhaustive", num_runs=100, eps=0.01)
+    # eps = 0.05
+    # failed_ex = run_appx_adv_example(testldr, fcmodel, hidden_network_params, W_L, num_runs=10, eps=eps)
+    #
+    # n_success = run_benign_ex_adv_attack(testldr, failed_ex, fcmodel, hidden_network_params, W_L, eps=eps)
+    # print("n_successes / n_lower_bounded_fails: {}/{}".format(n_success, len(failed_ex)))
 
-    n_success = run_benign_ex_adv_attack(testldr, failed_ex, fcmodel, hidden_network_params, W_L, eps=eps)
-    print("n_successes / n_lower_bounded_fails: {}/{}".format(n_success, len(failed_ex)))
+    ### test 2: ibp-linear
+    from linear_appx import run_ibp_with_linear
+    n_total = 0
+    n_success_attack = 0
+    max_attempts = 100
+    for images, labels in testldr:
+        preds = fcmodel(images).detach()
+        preds_id = np.argmax(preds, axis=1)
+        for idx, (pred_id, label) in enumerate(zip(preds_id, labels)):
+            outp = preds[idx].squeeze()
+            # print("original out pred {}".format(outp))
+            max_idx = np.argmax(outp)
+            x_0 = images[idx].detach().numpy().reshape(-1, )
+            #x_sol = find_appx_adv_attack(hidden_network_params, x_0, eps, W_L, max_idx)
+            # TODO: update function to get hidden net params; add final layer opt;
+            #linear_appx_layer_schedule = [(5, 3)]
+            linear_appx_layer_schedule = []
+            eps = 0.01
+            L_0, U_0 = create_init_bounds(x_0, eps)
+            L, U = run_ibp_with_linear(hidden_network_params, linear_appx_layer_schedule,
+                                       torch.tensor(L_0).float(), torch.tensor(U_0).float())
+            L_fin = find_last_layer_bound(W_L, torch.zeros(len(W_L)), pred_id, L, U)
+            if torch.min(L_fin) < 0:
+                n_success_attack += 1
+            n_total += 1
+            if n_total % 20 == 0:
+                print("{}/{} batch".format(n_total//20, max_attempts//20))
+            if n_total >= max_attempts:
+                break
+        if n_total >= max_attempts:
+            break
+    print("total safe examples / total attempts: {}/{}".format(max_attempts-n_success_attack, max_attempts))
+
 

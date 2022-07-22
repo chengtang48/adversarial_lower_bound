@@ -1,7 +1,18 @@
-### this approx relies on property of ReLU
+### IBP bounds
+
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+
+# from linear_appx import update_opt_params
+
+
+act_fn_mapping = dict({
+    "relu": nn.ReLU(),
+    "sigmoid": nn.Sigmoid(),
+}
+)
 
 
 def get_extreme(w, L, U, direction="max"):
@@ -50,7 +61,24 @@ def fast_layer(network_param, L, U):
     return L_new, U_new
 
 
-def fast_layer_matrix_form(network_param, L, U):
+def fast_ibp_layer(network_param, L, U, return_pre_act=False):
+    net_param, lin_op_type, act_type, conv_param = network_param
+
+    if lin_op_type == "linear":
+        return fast_layer_matrix_form(net_param, L, U,
+                                      activation=act_fn_mapping[act_type] if act_type is not None else None,
+                                      return_pre_act=return_pre_act)
+    elif lin_op_type == "conv2d":
+        return fast_conv2D_layer_matrix_form(net_param, conv_param, L, U,
+                                             activation=act_fn_mapping[act_type] if act_type is not None else None,
+                                             return_pre_act=return_pre_act)
+    elif lin_op_type == "avg_pool":
+        return None
+    elif lin_op_type == "max_pool":
+        return None
+
+
+def fast_layer_matrix_form(network_param, L, U, activation=None, return_pre_act=False):
     """
     matrix form of fast-layer update, via pytorch
     :param network_param: W, b
@@ -59,34 +87,145 @@ def fast_layer_matrix_form(network_param, L, U):
     :return: L_new, U_new
     """
     W, b = network_param
-    o0 = torch.matmul(W, U)
-    o1 = torch.matmul(F.relu(W), L - U)
+    #o0 = torch.matmul(W, U)
+    #o1 = torch.matmul(F.relu(W), L - U)
     #L_new = F.relu(F.linear(U, W, bias=b+o1))
-    L_new =  F.relu(torch.add(b, o0 + o1))
-    o2 = torch.matmul(F.relu(-1*W), U-L)
+    #o0 = F.linear(U, W, bias=b.reshape(1, -1))
+    o0 = F.linear(U, W, bias=b.reshape(-1))
+    #print("o0 shape", o0.shape)
+    o1 = F.linear(L - U, F.relu(W), bias=None)
+
+    L_pre, U_pre = None, None
+    if activation is None:
+        #L_new =  F.relu(torch.add(b, o0 + o1))
+        #L_new = torch.add(b, o0 + o1) # linear layer
+        L_new = o0 + o1
+    else:
+        #L_new = activation(torch.add(b, o0 + o1))
+        L_pre = o0 + o1
+        L_new = activation(o0 + o1)
+
+    #o2 = torch.matmul(F.relu(-1*W), U-L)
     #U_new = F.relu(F.linear(U, W, bias=b+o2))
-    U_new = F.relu(torch.add(b, o0 + o2))
-    return L_new, U_new
+    o2 = F.linear(U-L, F.relu(-1*W), bias=None)
+
+    if activation is None:
+        #U_new = F.relu(torch.add(b, o0 + o2))
+        #U_new = torch.add(b, o0 + o2)
+        U_new = o0 + o2
+    else:
+        #U_new  = activation(torch.add(b, o0 + o2))
+        U_pre = o0 + o2
+        U_new = activation(o0 + o2)
+
+    if return_pre_act:
+        return L_new, U_new, L_pre, U_pre
+    else:
+        return L_new, U_new
 
 
-def fast_conv2D_layer_matrix_form(network_param, conv_param, L, U):
+# def fast_layer_matrix_form(network_param, L, U, activation=None):
+#     # TODO: add support to linearization
+#     """
+#     matrix form of fast-layer update, via pytorch
+#     :param network_param: W, b
+#     :param L: tensorized lower bound vector
+#     :param U: tensorized upper bound vector
+#     :return: L_new, U_new
+#     """
+#     W, b = network_param
+#     #o0 = torch.matmul(W, U)
+#     #o1 = torch.matmul(F.relu(W), L - U)
+#     #L_new = F.relu(F.linear(U, W, bias=b+o1))
+#     #o0 = F.linear(U, W, bias=b.reshape(1, -1))
+#     o0 = F.linear(U, W, bias=b.reshape(-1))
+#     #print("o0 shape", o0.shape)
+#     o1 = F.linear(L - U, F.relu(W), bias=None)
+#
+#     L_pre, U_pre = None, None
+#     if activation is None:
+#         #L_new =  F.relu(torch.add(b, o0 + o1))
+#         #L_new = torch.add(b, o0 + o1) # linear layer
+#         L_new = o0 + o1
+#     else:
+#         #L_new = activation(torch.add(b, o0 + o1))
+#         L_new = activation(o0 + o1)
+#
+#     #o2 = torch.matmul(F.relu(-1*W), U-L)
+#     #U_new = F.relu(F.linear(U, W, bias=b+o2))
+#     o2 = F.linear(U-L, F.relu(-1*W), bias=None)
+#
+#     if activation is None:
+#         #U_new = F.relu(torch.add(b, o0 + o2))
+#         #U_new = torch.add(b, o0 + o2)
+#         U_new = o0 + o2
+#     else:
+#         #U_new  = activation(torch.add(b, o0 + o2))
+#         U_new = activation(o0 + o2)
+#
+#     return L_new, U_new
+
+
+
+
+# def fast_layer_matrix_form(network_param, L, U, activation=None):
+#     # TODO: add support to linearization
+#     """
+#     matrix form of fast-layer update, via pytorch
+#     :param network_param: W, b
+#     :param L: tensorized lower bound vector
+#     :param U: tensorized upper bound vector
+#     :return: L_new, U_new
+#     """
+#     W, b = network_param
+#     o0 = torch.matmul(W, U)
+#     o1 = torch.matmul(F.relu(W), L - U)
+#     #L_new = F.relu(F.linear(U, W, bias=b+o1))
+#     if activation is None:
+#         #L_new =  F.relu(torch.add(b, o0 + o1))
+#         L_new = torch.add(b, o0 + o1) # linear layer
+#     else:
+#         L_new = activation(torch.add(b, o0 + o1))
+#     o2 = torch.matmul(F.relu(-1*W), U-L)
+#     #U_new = F.relu(F.linear(U, W, bias=b+o2))
+#
+#     if activation is None:
+#         #U_new = F.relu(torch.add(b, o0 + o2))
+#         U_new = torch.add(b, o0 + o2)
+#     else:
+#         U_new  = activation(torch.add(b, o0 + o2))
+#     return L_new, U_new
+
+
+def fast_conv2D_layer_matrix_form(network_param, conv_param, L, U, activation=None, return_pre_act=False):
     """
-        approximates outputs from conv2D layer, implemented directly via pytorch
-        :param network_param: W, b
-        :param L: tensorized lower bound matrix, shape=(d, d)
-        :param U: tensorized upper bound matrix, shape=(d, d)
-        :return: L_new, U_new
+    ibp approximation of outputs from conv2D layer
+    :param network_param:
+    :param conv_param:
+    :param L:
+    :param U:
+    :param activation:
+    :return:
     """
     W_k, b_k = network_param
     stride, padding, *params = conv_param
     o0 = F.conv2d(U, W_k, bias=b_k, stride=stride, padding=padding, *params)
     o1 = F.conv2d(L-U, F.relu(W_k), bias=None, stride=stride, padding=padding, *params)
-    L_new = F.relu(o1 + o0)
 
+    L_pre, U_pre = None, None
+    if activation is None:
+        L_new = o1 + o0 # linear convolution
+    else:
+        L_pre = o1 + o0
+        L_new  = activation(o1 + o0)
     o2 = F.conv2d(U-L, F.relu(-1*W_k), bias=None, stride=stride, padding=padding, *params)
     #U_new = F.relu(F.conv2d(U, W_k, bias=b_k+o2, stride=stride, padding=padding, *params))
-    U_new = F.relu(o2 + o0)
-    return L_new, U_new
+    if activation is None:
+        U_new = o2 + o0 # linear convolution
+    else:
+        U_pre = o2 + o0
+        U_new = activation(o2 + o0)
+    return L_new, U_new, L_pre, U_pre if return_pre_act else L_new, U_new
 
 
 def fast_pool2D_layer_matrix_form(kernel_size, conv_param, L, U, op='max'):
@@ -111,13 +250,38 @@ def fast_pool2D_layer_matrix_form(kernel_size, conv_param, L, U, op='max'):
     return L_new, U_new
 
 
-
 ##### callable by find_adv_attack
 def fast_forward(hidden_network_params, L_0, U_0):
+    # comment: outdated
     L, U = L_0, U_0
     for network_param in hidden_network_params:
         L, U = fast_layer(network_param, L, U)
     return L, U
+
+
+def find_last_layer_bound(W_o, b_o, obj_idx, L, U):
+    W_L, b_L = [], []
+    for j in range(len(b_o)):
+        if j != obj_idx:
+            W_L.append(W_o[obj_idx] - W_o[j])
+            b_L.append(b_o[obj_idx] - b_o[j])
+    #print(W_o.shape)
+    #print("last layer", torch.vstack(W_L).shape, L.shape)
+    L, _ = fast_layer_matrix_form((torch.vstack(W_L), torch.vstack(b_L)), L, U, activation=None)
+    return L
+
+
+def find_last_layer_matrix(W_o, b_o, obj_idx):
+    W_L, b_L = [], []
+    for j in range(len(b_o)):
+        if j != obj_idx:
+            W_L.append(W_o[obj_idx] - W_o[j])
+            b_L.append(b_o[obj_idx] - b_o[j])
+    # print(W_o.shape)
+    # print("last layer", torch.vstack(W_L).shape, L.shape)
+    return torch.vstack(W_L), torch.vstack(b_L)
+
+
 
 
 if __name__ == '__main__':

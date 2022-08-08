@@ -225,7 +225,10 @@ def fast_conv2D_layer_matrix_form(network_param, conv_param, L, U, activation=No
     else:
         U_pre = o2 + o0
         U_new = activation(o2 + o0)
-    return L_new, U_new, L_pre, U_pre if return_pre_act else L_new, U_new
+    if return_pre_act:
+        return L_new, U_new, L_pre, U_pre
+    else:
+        return L_new, U_new
 
 
 def fast_pool2D_layer_matrix_form(kernel_size, conv_param, L, U, op='max'):
@@ -269,6 +272,18 @@ def find_last_layer_bound(W_o, b_o, obj_idx, L, U):
     #print("last layer", torch.vstack(W_L).shape, L.shape)
     L, _ = fast_layer_matrix_form((torch.vstack(W_L), torch.vstack(b_L)), L, U, activation=None)
     return L
+
+
+# def find_last_layer_bound(W_o, b_o, obj_idx, L, U):
+#     W_L, b_L = [], []
+#     for j in range(len(b_o)):
+#         if j != obj_idx:
+#             W_L.append(W_o[j]-W_o[obj_idx])
+#             b_L.append(b_o[j]-b_o[obj_idx])
+#     #print(W_o.shape)
+#     #print("last layer", torch.vstack(W_L).shape, L.shape)
+#     _, U = fast_layer_matrix_form((torch.vstack(W_L), torch.vstack(b_L)), L, U, activation=None)
+#     return U
 
 
 def find_last_layer_matrix(W_o, b_o, obj_idx):

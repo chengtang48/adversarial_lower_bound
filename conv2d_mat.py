@@ -9,6 +9,24 @@ code modified from
 https://stackoverflow.com/questions/56702873/is-there-an-function-in-pytorch-for-converting-convolutions-to-fully-connected-n
 """
 
+def resolve_padded_dims(i_h, i_w, k_h, k_w, stride, padding):
+    i_h, i_w = i_h + 2*padding, i_w + 2*padding
+    return (i_h-k_h)//stride+1, (i_w-k_w)//stride+1
+
+
+def conv2d_bias(b, o_h, o_w):
+    """
+    compute bias param in explicit affine representation of conv2d;
+    :param b: bias param from a conv2d net; shape=(n_out,)
+    :param o_h: output height of conv2d op
+    :param o_w: output width of conv2d op
+    :return: b_ex: shape=(n_out * o_h * o_w)
+    """
+    n_out = len(b)
+    b = torch.tile(b, (o_h * o_w, 1))
+    return b.T.reshape(n_out * o_h * o_w)
+
+
 def circulant_like(row, n_rows, stride=1):
     """
     for stride==1, reduces to upper triangular toeplitz with n_rows and first_row==row
@@ -217,5 +235,19 @@ if __name__ == "__main__":
     out = np.matmul(T_k, inp.reshape(-1))
     output = np.matmul(T_k.transpose(), out)
     toutput = torch.nn.functional.conv_transpose2d(torch.tensor(out.reshape(1, 1, 8, 8)), torch.tensor(ker.reshape(1, 1, 3, 3)))
+    print(np.sum((output - toutput.detach().numpy().reshape(-1)) ** 2))
+
+
+    ## test 7: conv2d with bias (single-output channel)
+    ker = np.random.randn(2, 3, 3)
+    b = np.random.randn(1)
+    inp = np.random.randn(2, 10, 10)
+    stride, padding = 1, 0
+    T_k = conv2d_circulant_like_multi_ch(ker, (10, 10))
+    o_h, o_w = resolve_padded_dims(*inp.shape[1:], *ker.shape[1:], stride, padding)
+    output = np.matmul(T_k, inp.reshape(-1)) + conv2d_bias(torch.tensor(b), o_h, o_w).numpy()
+    toutput = torch.nn.functional.conv2d(torch.tensor(inp.reshape(1, 2, 10, 10)),
+                                                   torch.tensor(ker.reshape(1, 2, 3, 3)),
+                                         bias=torch.tensor(b))
     print(np.sum((output - toutput.detach().numpy().reshape(-1)) ** 2))
 

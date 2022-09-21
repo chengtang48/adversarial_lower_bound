@@ -27,13 +27,15 @@ Architecture, training, and loading functions of neural nets used for experiment
 1. Tested IBP with small, medium, and pretrained imagenet models
 2. Tested IBP-Lin with small model
 
-### TODO list
-1. Sanity check of theoretical findings 
-   * run IBP-Lin with increased k in k-layer approximation doesn't necessarily outperform
-    the original IBP bounds (DONE)
-     
-   * How does the hidden dimension of the network affect the performance of k-layer linear 
-    approximation performance in IBP-Lin
+### TODO list (for paper)
+1. Sanity check of theoretical findings on feed-forward ReLU networks
+    * for random gaussian networks, understand how does the hidden dimension of the network affect the performance of k-layer linear 
+    approximation performance in IBP-Lin (Prop 3.2)
+        
+    * demonstrate how the quality of approximation can change sharply with magnitude of network weights (Prop. 3.4) 
+      
+    * run IBP-Lin with increased k in k-layer approximation doesn't necessarily outperform
+    the original IBP bounds (Prop. 3.5)
      
 
 2. Additional implementation and tests
@@ -41,11 +43,6 @@ Architecture, training, and loading functions of neural nets used for experiment
    * more tests for conv2d/pool layers for IBP-Lin
     
 
-3. Benchmarking experiments
-   * Compare IBP-Lin against CROWN, CROWN-IBP, CAP, Fast-Lin on small (relu), 
-     medium (LeNet-5), and large models (VGG imagenets)
-        * Test tightness of bound and running time
+
      
 
-4. (Optional)
-   * Adversarial training with IBP-Lin (probably hard)

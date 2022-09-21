@@ -35,10 +35,17 @@ Architecture, training, and loading functions of neural nets used for experiment
    * How does the hidden dimension of the network affect the performance of k-layer linear 
     approximation performance in IBP-Lin
      
-2. Additional implementation
+
+2. Additional implementation and tests
    * add support of pool layers for IBP-Lin (in linear_appx.py)
    * more tests for conv2d/pool layers for IBP-Lin
     
+
 3. Benchmarking experiments
    * Compare IBP-Lin against CROWN, CROWN-IBP, CAP, Fast-Lin on small (relu), 
      medium (LeNet-5), and large models (VGG imagenets)
+        * Test tightness of bound and running time
+     
+
+4. (Optional)
+   * Adversarial training with IBP-Lin (probably hard)
